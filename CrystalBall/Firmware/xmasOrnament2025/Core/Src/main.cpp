@@ -26,6 +26,8 @@
 #include "WS2812.h"
 #include "Buzzer.h"
 #include "oneButton.h"
+#include "melodioes.h"
+#include "melodyController.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,7 +38,6 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define DEVICE_AUTO_OFF_TIME_MS     (5ULL * 60ULL * 1000ULL)
-#define MAX_BUTTON_STAMP_POINTS     5
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -99,14 +100,7 @@ hsvColorTypedef xmasColors[] =
 
 uint32_t onTime = 0;
 int ledColorShift = 0;
-uint32_t ledShiftDelay = 0;
-
-bool risingInt = false;
-bool fallingInt = false;
-
-uint32_t intTimes[MAX_BUTTON_STAMP_POINTS] = {0};
-bool intStates[MAX_BUTTON_STAMP_POINTS] = {0};
-uint8_t intPins[MAX_BUTTON_STAMP_POINTS] = {0};
+uint8_t _ledMode = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -118,6 +112,11 @@ static void MX_TIM14_Init(void);
 /* USER CODE BEGIN PFP */
 OneButton btn1;
 OneButton btn2;
+
+// Create an object for the melody controller.
+MelodyController melody;
+
+void deviceShutDown();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -173,6 +172,9 @@ int main(void)
       while(1);
   }
 
+  // Init library for the melody contoller.
+  melody.begin((uint16_t**)currentMelodyNotes, (uint16_t**)currentMelodyDurations, (uint8_t*)melodyElements, sizeof(melodyElements) / sizeof(melodyElements[0]));
+  melody.play();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -183,87 +185,70 @@ int main(void)
       btn1.loop();
       btn2.loop();
 
-      if (btn1.isMultipleTap())
+      int update = melody.update();
+
+      if (btn1.isPressed())
+              melody.next();
+
+      if (btn2.isPressed())
       {
-          uint8_t _numberOfTaps = btn1.getNumberOfTaps() % 5;
-
-          // Set the new colors on LEDs.
-          for (int i = 0; i < 12; i++)
-          {
-              ws2812_setPixelColor(i, ws2812_hsv(xmasColors[_numberOfTaps].hue, xmasColors[_numberOfTaps].sat, xmasColors[_numberOfTaps].val));
-          }
-
-          // Push the new colors to the LEDs.
-          ws2812_show();
-
-          HAL_Delay(2000ULL);
-      }
-
-      if (btn1.isLongPressed())
-      {
-          // Set the new colors on LEDs.
-          for (int i = 0; i < 12; i++)
-          {
-              ws2812_setPixelColor(i, ws2812_hsv(xmasColors[5].hue, xmasColors[5].sat, xmasColors[5].val));
-          }
-
-          // Push the new colors to the LEDs.
-          ws2812_show();
-
-          HAL_Delay(2000ULL);
+          _ledMode = (_ledMode + 1) % 3;
       }
 
       if (btn2.isLongPressed())
       {
-          // Set the new colors on LEDs.
-          for (int i = 0; i < 12; i++)
-          {
-              ws2812_setPixelColor(i, ws2812_hsv(xmasColors[6].hue, xmasColors[6].sat, xmasColors[6].val));
-          }
-
-          // Push the new colors to the LEDs.
-          ws2812_show();
-
-          HAL_Delay(2000ULL);
+          melody.setMute(!melody.getMute());
       }
 
-      if (btn2.isMultipleTap())
+      if (btn1.isLongPressed())
       {
-          uint8_t _numberOfTaps = btn2.getNumberOfTaps() % 5;
-
-          // Set the new colors on LEDs.
-          for (int i = 0; i < 12; i++)
-          {
-              ws2812_setPixelColor(i, ws2812_hsv(xmasColors[(i % (_numberOfTaps + 1))].hue, xmasColors[(i % (_numberOfTaps + 1))].sat, xmasColors[(i % (_numberOfTaps + 1))].val));
-          }
-
-          // Push the new colors to the LEDs.
-          ws2812_show();
-
-          HAL_Delay(2000ULL);
-      }
-
-      if (btn1.isPressed())
-      {
-          buzzer_toneDuration(1000ULL, 100ULL, TIM_CHANNEL_1);
-          HAL_Delay(500ULL);
+          deviceShutDown();
       }
 
       // Go thought the colors every one second.
-      if ((uint32_t)(HAL_GetTick() - ledShiftDelay) > 1000ULL)
+      if (update)
       {
-          // Update the timer variable.
-          ledShiftDelay = HAL_GetTick();
+          if (update == 2)
+              _ledMode = (_ledMode + 1) % 3;
 
-          // Set the new colors on LEDs.
-          for (int i = 0; i < 12; i++)
+          if (_ledMode == 0)
           {
-              ws2812_setPixelColor(i, ws2812_hsv(xmasColors[(i + ledColorShift) % 5].hue, xmasColors[(i + ledColorShift) % 5].sat, xmasColors[(i + ledColorShift) % 5].val));
-          }
-          ledColorShift++;
+              uint8_t colors[] = {0, 2};
+              // Set the new colors on LEDs.
+              for (int i = 0; i < 12; i++)
+              {
+                  uint8_t _currentColorIndex = colors[(i + ledColorShift / 2) % 2] + (ledColorShift & 1);
+                  ws2812_setPixelColor(i, ws2812_hsv(xmasColors[_currentColorIndex].hue, xmasColors[_currentColorIndex].sat, xmasColors[_currentColorIndex].val));
+              }
+              ledColorShift++;
 
-          // Push the new colors to the LEDs.
-          ws2812_show();
+              // Push the new colors to the LEDs.
+              ws2812_show();
+          }
+          else if (_ledMode == 1)
+          {
+              // Set the new colors on LEDs.
+              for (int i = 0; i < 12; i++)
+              {
+                  ws2812_setPixelColor(i, ws2812_hsv(xmasColors[(ledColorShift + i) % 5].hue, xmasColors[(ledColorShift + i) % 5].sat, xmasColors[(ledColorShift + i) % 5].val));
+              }
+              ledColorShift++;
+
+              // Push the new colors to the LEDs.
+              ws2812_show();
+          }
+          else if (_ledMode == 2)
+          {
+              // Set the new colors on LEDs.
+              for (int i = 0; i < 12; i++)
+              {
+                  ws2812_setPixelColor(i, ws2812_hsv(xmasColors[ledColorShift % 5].hue, xmasColors[ledColorShift % 5].sat, xmasColors[ledColorShift % 5].val));
+              }
+              ledColorShift++;
+
+              // Push the new colors to the LEDs.
+              ws2812_show();
+          }
       }
 
       // If 10 minutes passed, shut down the ornament and prepare everything for the power up on the button.
@@ -272,34 +257,7 @@ int main(void)
           // Update the timer.
           onTime = HAL_GetTick();
 
-          // Turn off all LEDs.
-          for (int i = 0; i < 12; i++)
-          {
-              ws2812_setPixelColor(i, 0);
-          }
-
-          // Push the new colors to the LEDs.
-          ws2812_show();
-
-          // Disable the supply to the LEDs and buzzer.
-          HAL_GPIO_WritePin(PERIPH_EN_GPIO_Port, PERIPH_EN_Pin, GPIO_PIN_SET);
-
-          // Disable the timers for LEDs and buzzer.
-          HAL_TIM_PWM_DeInit(&htim14);
-          HAL_TIM_PWM_DeInit(&htim3);
-
-          // Set the wake up pins.
-          HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-          HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN4);
-          HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_LOW);
-          HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4_LOW);
-          __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
-
-          // Disable the tick
-          HAL_SuspendTick();
-
-          // Shut-down whole device.
-          HAL_PWREx_EnterSHUTDOWNMode();
+          deviceShutDown();
       }
     /* USER CODE END WHILE */
 
@@ -522,6 +480,40 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == GPIO_PIN_2) btn1.updateState(HAL_GetTick(), 0);
     if (GPIO_Pin == GPIO_PIN_0) btn2.updateState(HAL_GetTick(), 0);
+}
+
+void deviceShutDown()
+{
+    // Turn off all LEDs.
+    for (int i = 0; i < 12; i++)
+    {
+        ws2812_setPixelColor(i, 0);
+    }
+
+    // Push the new colors to the LEDs.
+    ws2812_show();
+
+    // Disable the supply to the LEDs and buzzer.
+    HAL_GPIO_WritePin(PERIPH_EN_GPIO_Port, PERIPH_EN_Pin, GPIO_PIN_SET);
+
+    // Disable the timers for LEDs and buzzer.
+    HAL_TIM_PWM_DeInit(&htim14);
+    HAL_TIM_PWM_DeInit(&htim3);
+
+    while(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == GPIO_PIN_RESET);
+
+    // Set the wake up pins.
+    //HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+    HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN4);
+    //HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_LOW);
+    HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4_LOW);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+
+    // Disable the tick
+    HAL_SuspendTick();
+
+    // Shut-down whole device.
+    HAL_PWREx_EnterSHUTDOWNMode();
 }
 /* USER CODE END 4 */
 

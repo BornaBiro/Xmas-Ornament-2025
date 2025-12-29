@@ -49,8 +49,8 @@ void buzzer_tone(uint32_t _freq, uint32_t _channel)
 	// Now calculate the period.
 	uint32_t _period = ((HAL_RCC_GetSysClockFreq() / (_prescaler)) / _freq) - 1;
 
-	// Set duty cycle to 50%.
-	uint32_t _compare = (uint32_t)(_period * 0.5);
+	// Set duty cycle to 35% to get authentic sound of the X-Mas music boxes.
+	uint32_t _compare = (uint32_t)(_period * 0.35);
 
 	// Get the Compare register addreess.
 	uint32_t *_ccr = buzzer_getCCReg(_channel);
@@ -94,8 +94,8 @@ void buzzer_toneDuration(uint32_t _freq, uint32_t _durationMs, uint32_t _channel
 
 void buzzer_noTone(uint32_t _channel)
 {
-	// Just stop the PWM generation on this specific channel.ž
-	HAL_TIMEx_PWMN_Stop(_htim, _channel);
+	// Just stop the PWM generation on this specific channel.
+    HAL_TIM_PWM_Stop(_htim, _channel);
 }
 
 static uint32_t* buzzer_getCCReg(uint32_t _timerCh)
